@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2B5CAD">
+<title>Voz Stock D23</title>
+<style>
+:root{--azul:#2B5CAD;--rojo:#E63329;--verde:#3D9B5D;--gris:#6B6B6B;--amarillo:#D99500;--fondo:#F4F6FA;--texto:#1d1d1f}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--fondo);color:var(--texto);-webkit-tap-highlight-color:transparent}
+header{background:var(--azul);color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+header h1{font-size:18px;margin:0}
+#estadoDatos{font-size:12px;opacity:.9;text-align:right;background:none;border:none;color:#fff;padding:0}
+main{max-width:560px;margin:0 auto;padding:16px}
+#mic{display:block;margin:8px auto;width:160px;height:160px;border-radius:50%;border:none;background:var(--azul);color:#fff;font-size:16px;font-weight:600;box-shadow:0 6px 18px rgba(43,92,173,.35)}
+#mic svg{width:58px;height:58px;display:block;margin:0 auto 6px}
+#mic.escuchando{background:var(--rojo);animation:pulso 1.2s infinite}
+#mic:disabled{background:#9aa5b8;box-shadow:none;animation:none}
+@keyframes pulso{0%{box-shadow:0 0 0 0 rgba(230,51,41,.5)}100%{box-shadow:0 0 0 26px rgba(230,51,41,0)}}
+#oido{min-height:24px;text-align:center;color:var(--gris);font-style:italic;margin:6px 0 12px}
+form{display:flex;gap:8px;margin-bottom:14px}
+input{flex:1;min-width:0;font-size:16px;padding:12px;border:1px solid #cfd6e3;border-radius:10px;background:#fff}
+.btn{font-size:15px;padding:0 16px;border:none;border-radius:10px;background:var(--azul);color:#fff;min-height:46px}
+#msg{font-size:15px;margin-bottom:10px;line-height:1.35}
+#msg.alerta{background:#FFF4D6;border-left:4px solid var(--amarillo);padding:10px;border-radius:8px}
+.tarjeta{background:#fff;border-radius:12px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.08);display:flex;gap:12px;align-items:center;border-left:6px solid var(--gris);cursor:pointer}
+.tarjeta.ok{border-color:var(--verde)}.tarjeta.poco{border-color:var(--amarillo)}.tarjeta.cero,.tarjeta.neg{border-color:var(--rojo)}
+.num{font-size:26px;font-weight:700;min-width:70px;text-align:center}
+.ok .num{color:var(--verde)}.poco .num{color:var(--amarillo)}.cero .num,.neg .num{color:var(--rojo)}
+.nom{font-weight:600;font-size:15px;line-height:1.25}
+.det{font-size:12px;color:var(--gris);margin-top:4px}
+.camino{font-size:13px;color:var(--azul);font-weight:600;margin-top:4px}
+.camino.atrasado{color:var(--amarillo)}
+kbd{font-family:inherit;font-size:12px;border:1px solid #b8c1d1;border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:#fff;color:var(--texto)}
+#login{position:fixed;inset:0;background:var(--fondo);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
+#login .caja{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
+#login h2{margin:0 0 12px;font-size:18px;color:var(--azul)}
+#login form{flex-direction:column}
+#loginErr{color:var(--rojo);font-size:13px;min-height:18px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Stock D23 por voz</h1>
+  <button id="estadoDatos" title="Actualizar datos">Cargando…</button>
+</header>
+
+<main>
+  <button id="mic" disabled>
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+    <span id="micTxt">Toca y pregunta</span>
+  </button>
+  <div id="oido">Ej: "¿queda crema Legy?"</div>
+  <div id="ayudaTecla" style="text-align:center;font-size:13px;color:var(--gris);margin:-6px 0 12px">o mantén <kbd>F2</kbd> mientras hablas y suelta para escuchar la respuesta</div>
+
+  <form id="formBuscar" autocomplete="off">
+    <input id="q" type="search" placeholder="O escribe el producto o código">
+    <button class="btn" type="submit">Buscar</button>
+  </form>
+
+  <div id="msg"></div>
+  <div id="resultados"></div>
+</main>
+
+<div id="login">
+  <div class="caja">
+    <h2>Stock D23 por voz</h2>
+    <form id="formLogin">
+      <input id="clave" type="password" placeholder="Clave" inputmode="numeric">
+      <div id="loginErr"></div>
+      <button class="btn" type="submit">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<script>
+/* ========= CONFIGURACIÓN ========= */
+const API_URL = 'https://script.google.com/macros/s/AKfycbxKwXuQ3iZ5gZhX_ycYww9m4gjKvkp1cDhSET9TEnfixJcgu4J1HLvzjIdvWPutZ1CGWw/exec';
+const REFRESCO_MIN = 15;     // recarga datos al volver a la app si pasaron N minutos
+const MAX_LEER = 3;          // hasta cuántos productos lee en voz alta de una vez
+const MAX_MOSTRAR = 8;       // máximo de tarjetas en pantalla
+const TECLA_HABLAR = 'F2';   // mantener apretada para hablar, soltar para que responda
+const MAX_ESCUCHA_SEG = 15;  // corta la escucha si la tecla queda pegada
+
+/* ========= ESTADO ========= */
+let DATA = null, INDICE = [], cargadoEn = 0;
+const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+function normNombre(s){ return String(s || '').toUpperCase().replace(/^\*+/, '').replace(/\s+/g, ' ').trim(); }
+const $ = id => document.getElementById(id);
+const store = {
+  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} },
+  del(k){ try { localStorage.removeItem(k); } catch(e){} }
+};
+
+/* ========= DATOS (JSONP) ========= */
+function jsonp(url){
+  return new Promise((res, rej) => {
+    const cb = 'cbVoz' + Date.now() + Math.floor(Math.random()*1000);
+    const s = document.createElement('script');
+    const t = setTimeout(() => { fin(); rej(new Error('La planilla tardó demasiado')); }, 40000);
+    function fin(){ clearTimeout(t); try { delete window[cb]; } catch(e){ window[cb] = undefined; } s.remove(); }
+    window[cb] = d => { fin(); res(d); };
+    s.onerror = () => { fin(); rej(new Error('Sin conexión con la planilla')); };
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+    document.body.appendChild(s);
+  });
+}
+
+async function cargarDatos(){
+  const clave = store.get('vozd23_clave');
+  if (!clave) { mostrarLogin(); return; }
+  $('estadoDatos').textContent = 'Actualizando…';
+  try {
+    const d = await jsonp(API_URL + '?key=' + encodeURIComponent(clave));
+    if (!d.ok) {
+      if (d.error === 'clave') { store.del('vozd23_clave'); mostrarLogin('Clave incorrecta'); return; }
+      throw new Error(d.error);
+    }
+    usarDatos(d);
+    store.set('vozd23_cache', JSON.stringify(d));
+  } catch (e) {
+    if (!DATA) $('estadoDatos').textContent = 'Error al cargar';
+    else pintarEstado();
+    setMsg('No pude actualizar el stock: ' + e.message + (DATA ? '. Uso los últimos datos guardados.' : ''), true);
+  }
+}
+
+function usarDatos(d){
+  DATA = d; cargadoEn = Date.now();
+  const TR = d.transito || {};
+  INDICE = d.items.map(it => {
+    const t = tokens(it[0]);
+    const camino = (TR[normNombre(it[0])] || []).slice().sort((a, b) => (a.arribo || '9') < (b.arribo || '9') ? -1 : 1);
+    return { nombre: it[0], stock: it[1], codigo: it[2], fecha: it[3] || d.fecha,
+             transito: camino.length ? camino : null,
+             toks: t, fon: t.map(fonetica), set: new Set(t) };
+  });
+  pintarEstado();
+  $('mic').disabled = !SR;
+}
+
+function pintarEstado(){
+  if (!DATA) return;
+  $('estadoDatos').innerHTML = 'Inventario: ' + fechaCorta(DATA.fecha) + '<br>' + INDICE.length + ' productos ⟳';
+}
+
+/* ========= TEXTO: NORMALIZACIÓN ========= */
+const UNIDAD = {gramos:'gr',gramo:'gr',grs:'gr',gr:'gr',g:'gr',grms:'gr',kilos:'kg',kilo:'kg',kg:'kg',kgs:'kg',k:'kg',
+  litros:'lt',litro:'lt',lts:'lt',lt:'lt',l:'lt',onzas:'oz',onza:'oz',oz:'oz',unidades:'un',unidad:'un',unid:'un',
+  und:'un',un:'un',uds:'un',u:'un',centimetros:'cm',cms:'cm',cm:'cm',mililitros:'ml',ml:'ml',cc:'cc',por:'x'};
+const BLANDOS = new Set(['gr','kg','lt','oz','un','cm','ml','cc','x','pack','paquete','caja','cja','cj','pq','pqx']);
+const RELLENO = new Set(['queda','quedan','quedara','queden','hay','habra','tenemos','tienen','tiene','tengo','stock',
+  'cuanto','cuanta','cuantos','cuantas','de','del','el','la','los','las','un','una','unos','unas','y','en','que','me',
+  'si','algo','alguna','algun','alguno','producto','productos','todavia','aun','oye','dime','sabes','con','para','al',
+  'lo','le','a','favor','porfa','porfavor','nos','se','es','esta','existe','disponible','bodega','sala','hola','ver','busca','buscar']);
+
+function sinTildes(s){ return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
+
+function tokens(s, consulta){
+  s = sinTildes(String(s))
+    .replace(/(\d),(\d)/g, '$1.$2')
+    .replace(/(\d)([a-z])/g, '$1 $2').replace(/([a-z])(\d)/g, '$1 $2')
+    .replace(/[^a-z0-9. ]/g, ' ');
+  let t = s.split(/\s+/).map(x => x.replace(/^\.+|\.+$/g, '')).filter(Boolean);
+  if (consulta) t = t.filter(x => !RELLENO.has(x));
+  return t.map(x => UNIDAD[x] || x);
+}
+
+// Clave fonética simple del español: corrige errores típicos del dictado (y/i, v/b, z/s, c/k, h muda)
+function fonetica(t){
+  if (/^\d/.test(t)) return t;
+  return t.replace(/h/g,'').replace(/ll/g,'y').replace(/y/g,'i').replace(/v/g,'b').replace(/z/g,'s')
+          .replace(/c([ei])/g,'s$1').replace(/qu/g,'k').replace(/c/g,'k').replace(/w/g,'u').replace(/(.)\1+/g,'$1');
+}
+
+function lev(a, b){
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const m = Array.from({length: a.length + 1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) m[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    m[i][j] = Math.min(m[i-1][j] + 1, m[i][j-1] + 1, m[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return m[a.length][b.length];
+}
+
+/* ========= BÚSQUEDA ========= */
+function puntajeToken(q, qf, p){
+  if (p.set.has(q)) return 1;
+  if (/^\d/.test(q)) return 0;                      // los números deben calzar exacto (12 oz ≠ 16 oz)
+  let mejor = 0;
+  for (let i = 0; i < p.toks.length; i++){
+    const t = p.toks[i], tf = p.fon[i];
+    if (/^\d/.test(t)) continue;
+    if (tf === qf) { mejor = Math.max(mejor, .95); continue; }
+    if (q.length >= 3 && t.startsWith(q)) { mejor = Math.max(mejor, .9); continue; }
+    if (t.length >= 3 && q.startsWith(t)) { mejor = Math.max(mejor, .8); continue; }  // abreviaturas: "choc" ⊂ "chocolate"
+    if (q.length >= 4) {
+      const d = lev(qf, tf);
+      if (d === 1 || (d === 2 && q.length >= 7)) mejor = Math.max(mejor, .7);
+    }
+  }
+  return mejor;
+}
+
+function buscar(texto){
+  const limpio = texto.trim();
+  if (/^\d{5,}$/.test(limpio.replace(/\s/g,''))) {
+    const cod = limpio.replace(/\s/g,'');
+    return { exactos: INDICE.filter(p => p.codigo === cod), parecidos: [] };
+  }
+  const q = tokens(limpio, true);
+  const duros = q.filter(t => !BLANDOS.has(t));
+  const blandos = q.filter(t => BLANDOS.has(t));
+  if (!duros.length) return { exactos: [], parecidos: [], vacio: true };
+  const qf = duros.map(fonetica);
+
+  const exactos = [], parecidos = [];
+  for (const p of INDICE){
+    let suma = 0, calzan = 0;
+    duros.forEach((t, i) => { const s = puntajeToken(t, qf[i], p); if (s > 0) { suma += s; calzan++; } });
+    if (!calzan) continue;
+    let bonus = 0;
+    blandos.forEach(t => { if (p.set.has(t)) bonus += .05; });
+    const extra = Math.max(0, p.toks.length - duros.length);
+    const score = suma / duros.length + bonus - extra * .01;
+    if (calzan === duros.length) exactos.push({ p, score });
+    else if (calzan / duros.length >= .5) parecidos.push({ p, score: score * calzan / duros.length });
+  }
+  exactos.sort((a, b) => b.score - a.score);
+  parecidos.sort((a, b) => b.score - a.score);
+  return { exactos: exactos.map(x => x.p), parecidos: parecidos.map(x => x.p) };
+}
+
+/* ========= RESPUESTA ========= */
+function numHablado(n){
+  return Number.isInteger(n) ? String(n) : String(+n.toFixed(2)).replace('.', ',');
+}
+
+function nombreHablado(n){
+  let s = n.replace(/^\*+/, '').replace(/\([^)]*\)/g, ' ');
+  s = s.replace(/(\d)\.(\d)/g, '$1 coma $2')
+       .replace(/(\d)\s*X\s*(\d)/gi, '$1 por $2')
+       .replace(/\bX\b/gi, 'por')
+       .replace(/\b(\d+)\s*GRS?\b\.?/gi, '$1 gramos').replace(/\bGRS?\b\.?/gi, 'gramos')
+       .replace(/\b(\d+)\s*(KGS?|KILOS?)\b/gi, '$1 kilos')
+       .replace(/\b(\d+)\s*LTS?\b/gi, '$1 litros').replace(/\b(\d+)\s*ML\b/gi, '$1 mililitros')
+       .replace(/\b(\d+)\s*CC\b/gi, '$1 c c').replace(/\b(\d+)\s*OZ\b/gi, '$1 onzas')
+       .replace(/\b(\d+)\s*CMS?\b/gi, '$1 centímetros')
+       .replace(/\b(UNID|UND|UN)\b\.?/gi, 'unidades')
+       .replace(/\bN\s?(\d+)\b/g, 'número $1');
+  s = s.replace(/\s+/g, ' ').trim().toLowerCase()
+       .replace(/\b1 (kilo|litro|gramo|onza|centímetro|mililitro)s\b/g, '1 $1')
+       .replace(/\b1 unidades\b/g, '1 unidad');
+  return s;
+}
+
+function porCaja(n){
+  const m = n.match(/\bC(?:J|JA|AJA)\s*X?\s*(\d+)/i);
+  return m ? +m[1] : null;
+}
+
+function clase(st){
+  if (st == null) return '';
+  if (st < 0) return 'neg';
+  if (st === 0) return 'cero';
+  if (st < 1) return 'poco';
+  return 'ok';
+}
+
+function fraseProducto(p, corta){
+  const nom = nombreHablado(p.nombre), st = p.stock;
+  let f;
+  if (st == null) f = nom + ': no tengo dato de stock.';
+  else if (st < 0) f = nom + ' aparece con stock negativo, hay que revisar en bodega.';
+  else if (st === 0) f = (corta ? nom + ', no queda.' : 'No queda. ' + nom + ' está en cero.');
+  else if (st < 1) f = (corta ? '' : 'Queda poco. ') + nom + ', queda ' + numHablado(st) + '.';
+  else f = (corta ? '' : 'Sí hay. ') + nom + ', ' + (st === 1 ? 'queda 1.' : 'quedan ' + numHablado(st) + '.');
+  f += fraseTransito(p, corta);
+  const cj = porCaja(p.nombre);
+  if (cj && !corta) f += ' La caja trae ' + cj + '.';
+  return f;
+}
+
+function fechaLarga(iso){
+  const [y, m, d] = iso.split('-');
+  return (+d) + ' de ' + MESES[+m - 1];
+}
+
+function fraseTransito(p, corta){
+  if (!p.transito) return '';
+  if (corta) return ' Viene en camino.';
+  const x = p.transito[0];
+  let f = ' Viene en camino de ' + x.prov.toLowerCase();
+  if (!x.arribo) return f + '.';
+  return x.arribo < hoyISO()
+    ? f + ', debía llegar el ' + fechaLarga(x.arribo) + ', está atrasado.'
+    : f + ', llegada estimada el ' + fechaLarga(x.arribo) + '.';
+}
+
+function textoCamino(p){
+  return p.transito.map(x => {
+    const cant = x.cant != null ? numHablado(x.cant) + ' ' + (x.um || '').toLowerCase() + ' · ' : '';
+    const llega = x.arribo ? ' · llega ' + fechaCorta(x.arribo) + (x.arribo < hoyISO() ? ' (atrasado)' : '') : '';
+    return '🚚 En camino: ' + cant + x.prov + llega;
+  }).join('\n');
+}
+
+function hoyISO(){
+  const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+function diasDesde(iso){
+  if (!iso) return null;
+  return Math.round((new Date(hoyISO()) - new Date(iso)) / 86400000);
+}
+function fechaCorta(iso){
+  if (!iso) return '¿?';
+  const [y, m, d] = iso.split('-'); return d + '-' + m;
+}
+function fraseFecha(iso){
+  const n = diasDesde(iso);
+  if (n == null) return 'No sé de qué fecha es el inventario.';
+  if (n <= 0) return 'Dato del inventario de hoy.';
+  if (n === 1) return 'Dato del inventario de ayer.';
+  return 'Ojo, el dato es del inventario de hace ' + n + ' días.';
+}
+
+/* ========= VOZ ========= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let voz = null, rec = null, escuchando = false, modoTecla = false, teclaAbajo = false, tCorte = null;
+
+function elegirVoz(){
+  const vs = speechSynthesis.getVoices();
+  const pref = ['es-CL', 'es-419', 'es-US', 'es-MX', 'es-AR', 'es-ES'];
+  for (const l of pref) { const v = vs.find(x => x.lang.replace('_', '-') === l); if (v) return v; }
+  return vs.find(x => x.lang.toLowerCase().startsWith('es')) || null;
+}
+if ('speechSynthesis' in window) {
+  voz = elegirVoz();
+  speechSynthesis.onvoiceschanged = () => { voz = elegirVoz(); };
+}
+
+function hablar(texto){
+  if (!('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(texto);
+  u.lang = voz ? voz.lang : 'es-CL';
+  if (voz) u.voice = voz;
+  u.rate = 1.05;
+  speechSynthesis.speak(u);
+}
+
+// porTecla = true: escucha mientras F2 esté apretada (continua). false: un toque, se corta sola al callar.
+function iniciarEscucha(porTecla){
+  if (!SR || !DATA) return;
+  if (escuchando) { if (!porTecla) rec.stop(); return; }
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  modoTecla = !!porTecla;
+  rec = new SR();
+  rec.lang = 'es-CL';
+  rec.interimResults = true;
+  rec.maxAlternatives = 4;
+  rec.continuous = modoTecla;
+  const finales = [];
+  rec.onstart = () => {
+    escuchando = true; $('mic').classList.add('escuchando');
+    $('micTxt').textContent = modoTecla ? 'Suelta ' + TECLA_HABLAR + ' al terminar' : 'Escuchando…';
+    $('oido').textContent = '';
+    if (modoTecla && !teclaAbajo) rec.stop();          // soltó la tecla antes de que partiera
+    tCorte = setTimeout(() => { if (escuchando) rec.stop(); }, MAX_ESCUCHA_SEG * 1000);
+  };
+  rec.onresult = ev => {
+    let parcial = '';
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) finales[i] = Array.from(r).map(a => a.transcript.trim());
+      else parcial += r[0].transcript;
+    }
+    const txt = (finales.filter(Boolean).map(a => a[0]).join(' ') + ' ' + parcial).trim();
+    if (txt) $('oido').textContent = '"' + txt + '"';
+  };
+  rec.onerror = ev => {
+    const m = { 'not-allowed': 'Debes permitir el micrófono para esta página.', 'no-speech': 'No escuché nada. Toca e intenta otra vez.',
+                'network': 'El dictado necesita internet.', 'audio-capture': 'No encuentro el micrófono.' };
+    setMsg(m[ev.error] || 'Error del micrófono: ' + ev.error, true);
+  };
+  rec.onend = () => {
+    clearTimeout(tCorte);
+    escuchando = false; $('mic').classList.remove('escuchando'); $('micTxt').textContent = 'Toca y pregunta';
+    const segs = finales.filter(Boolean);
+    if (!segs.length) return;
+    // Un solo tramo: probamos sus alternativas. Varios tramos (frase con pausas): los unimos.
+    consultar(segs.length === 1 ? segs[0] : [segs.map(a => a[0]).join(' ')]);
+  };
+  try { rec.start(); } catch (e) { setMsg('No pude activar el micrófono: ' + e.message, true); }
+}
+
+// Mantener F2 = hablar; soltar = responder. Funciona con la ventana de la app enfocada.
+document.addEventListener('keydown', e => {
+  if (e.key !== TECLA_HABLAR) return;
+  e.preventDefault();
+  if (e.repeat || $('login').style.display === 'flex') return;
+  teclaAbajo = true;
+  if (!escuchando) iniciarEscucha(true);
+});
+document.addEventListener('keyup', e => {
+  if (e.key !== TECLA_HABLAR) return;
+  e.preventDefault();
+  teclaAbajo = false;
+  if (escuchando && modoTecla) rec.stop();
+});
+window.addEventListener('blur', () => { teclaAbajo = false; if (escuchando && modoTecla) rec.stop(); });
+
+/* ========= FLUJO PRINCIPAL ========= */
+function consultar(alternativas){
+  // Prueba cada interpretación del dictado y se queda con la primera que calza exacto
+  let res = null, usado = alternativas[0];
+  for (const a of alternativas) {
+    const r = buscar(a);
+    if (r.exactos.length) { res = r; usado = a; break; }
+    if (!res) res = r;
+  }
+  $('oido').textContent = '"' + usado + '"';
+  responder(res, usado);
+}
+
+function responder(res, texto){
+  const { exactos, parecidos } = res;
+  $('resultados').innerHTML = '';
+  if (res.vacio) { const f = 'Dime el nombre del producto.'; setMsg(f); hablar(f); return; }
+
+  if (!exactos.length) {
+    if (!parecidos.length) {
+      const f = 'No encontré "' + texto + '". Prueba con otras palabras o con la marca.';
+      setMsg(f, true); hablar('No encontré ese producto. Prueba con otras palabras o con la marca.');
+      return;
+    }
+    const lista = parecidos.slice(0, MAX_MOSTRAR);
+    setMsg('No calza exacto. ¿Es alguno de estos? Tócalo para escuchar el stock.', true);
+    pintar(lista);
+    hablar('No encontré exactamente eso. Te muestro productos parecidos en pantalla.');
+    return;
+  }
+
+  const fecha = fraseFecha(exactos[0].fecha);
+  if (exactos.length === 1) {
+    const f = fraseProducto(exactos[0]) + ' ' + fecha;
+    setMsg(f, diasDesde(exactos[0].fecha) > 1);
+    pintar(exactos);
+    hablar(f);
+    return;
+  }
+  if (exactos.length <= MAX_LEER) {
+    const f = 'Encontré ' + exactos.length + ' productos. ' + exactos.map(p => fraseProducto(p, true)).join(' ') + ' ' + fecha;
+    setMsg('Encontré ' + exactos.length + ' productos. ' + fecha, diasDesde(exactos[0].fecha) > 1);
+    pintar(exactos);
+    hablar(f);
+    return;
+  }
+  const mostrar = exactos.slice(0, MAX_MOSTRAR);
+  const masTxt = exactos.length > MAX_MOSTRAR ? ' Muestro los primeros ' + MAX_MOSTRAR + '; di algo más específico.' : ' Elige en pantalla.';
+  setMsg('Encontré ' + exactos.length + ' productos.' + masTxt);
+  pintar(mostrar);
+  hablar('Encontré ' + exactos.length + ' productos.' + (exactos.length > MAX_MOSTRAR ? ' Di algo más específico, como la marca o el tamaño.' : ' Elige en pantalla.'));
+}
+
+function pintar(lista){
+  const cont = $('resultados');
+  cont.innerHTML = '';
+  lista.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'tarjeta ' + clase(p.stock);
+    const cj = porCaja(p.nombre);
+    div.innerHTML = '<div class="num"></div><div><div class="nom"></div><div class="det"></div></div>';
+    div.querySelector('.num').textContent = p.stock == null ? '—' : numHablado(p.stock);
+    div.querySelector('.nom').textContent = p.nombre;
+    div.querySelector('.det').textContent = 'Cód. ' + (p.codigo || '—') + (cj ? ' · Caja x' + cj : '') + ' · Inv. ' + fechaCorta(p.fecha);
+    if (p.transito) {
+      const c = document.createElement('div');
+      c.className = 'camino' + (p.transito.some(x => x.arribo && x.arribo < hoyISO()) ? ' atrasado' : '');
+      c.style.whiteSpace = 'pre-line';
+      c.textContent = textoCamino(p);
+      div.querySelector('.det').after(c);
+    }
+    div.onclick = () => hablar(fraseProducto(p) + ' ' + fraseFecha(p.fecha));
+    cont.appendChild(div);
+  });
+}
+
+function setMsg(t, alerta){
+  const m = $('msg'); m.textContent = t; m.className = alerta ? 'alerta' : '';
+}
+
+/* ========= LOGIN ========= */
+function mostrarLogin(err){
+  $('login').style.display = 'flex';
+  $('loginErr').textContent = err || '';
+  setTimeout(() => $('clave').focus(), 50);
+}
+$('formLogin').onsubmit = e => {
+  e.preventDefault();
+  const c = $('clave').value.trim();
+  if (!c) return;
+  store.set('vozd23_clave', c);
+  $('login').style.display = 'none';
+  cargarDatos();
+};
+
+/* ========= EVENTOS ========= */
+$('mic').onclick = () => iniciarEscucha(false);
+$('estadoDatos').onclick = cargarDatos;
+$('formBuscar').onsubmit = e => {
+  e.preventDefault();
+  const t = $('q').value;
+  if (!t.trim() || !DATA) return;
+  $('q').blur();
+  $('oido').textContent = '';
+  responder(buscar(t), t);
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && Date.now() - cargadoEn > REFRESCO_MIN * 60000) cargarDatos();
+});
+
+/* ========= INICIO ========= */
+if (!SR) { $('oido').textContent = 'Este navegador no permite dictado; usa Chrome o escribe abajo.'; $('ayudaTecla').style.display = 'none'; }
+if (matchMedia('(pointer: coarse)').matches) $('ayudaTecla').style.display = 'none'; // celulares/tablets sin teclado
+try { const c = store.get('vozd23_cache'); if (c) usarDatos(JSON.parse(c)); } catch(e){}
+cargarDatos();
+</script>
+</body>
+</html>
