@@ -82,6 +82,8 @@ const MAX_LEER = 3;          // hasta cuántos productos lee en voz alta de una 
 const MAX_MOSTRAR = 8;       // máximo de tarjetas en pantalla
 const TECLA_HABLAR = 'F2';   // mantener apretada para hablar, soltar para que responda
 const MAX_ESCUCHA_SEG = 15;  // corta la escucha si la tecla queda pegada
+const VIVO_ACTIVO = true;     // consulta el stock en vivo en Ailoo antes de responder
+const VIVO_ESPERA_MS = 6000;  // si Ailoo no responde en este tiempo, usa el dato del inventario
 
 /* ========= ESTADO ========= */
 let DATA = null, INDICE = [], cargadoEn = 0;
@@ -95,11 +97,11 @@ const store = {
 };
 
 /* ========= DATOS (JSONP) ========= */
-function jsonp(url){
+function jsonp(url, espera){
   return new Promise((res, rej) => {
     const cb = 'cbVoz' + Date.now() + Math.floor(Math.random()*1000);
     const s = document.createElement('script');
-    const t = setTimeout(() => { fin(); rej(new Error('La planilla tardó demasiado')); }, 40000);
+    const t = setTimeout(() => { fin(); rej(new Error('La planilla tardó demasiado')); }, espera || 40000);
     function fin(){ clearTimeout(t); try { delete window[cb]; } catch(e){ window[cb] = undefined; } s.remove(); }
     window[cb] = d => { fin(); res(d); };
     s.onerror = () => { fin(); rej(new Error('Sin conexión con la planilla')); };
@@ -425,10 +427,47 @@ function consultar(alternativas){
   responder(res, usado);
 }
 
-function responder(res, texto){
+/* ========= STOCK EN VIVO (Ailoo) ========= */
+let consultaId = 0;
+function esVivo(p){ return p.vivoEn && Date.now() - p.vivoEn < 120000; }
+
+async function actualizarVivo(lista){
+  if (!VIVO_ACTIVO) return false;
+  const cods = [...new Set(lista.map(p => p.codigo).filter(Boolean))];
+  if (!cods.length) return false;
+  try {
+    const d = await jsonp(API_URL + '?key=' + encodeURIComponent(store.get('vozd23_clave') || '') +
+                          '&accion=vivo&codigos=' + cods.join(','), VIVO_ESPERA_MS);
+    if (!d || !d.ok) return false;
+    let alguno = false;
+    lista.forEach(p => {
+      const v = d.vivo[p.codigo];
+      if (v !== undefined && v !== null && !isNaN(Number(v))) {
+        p.stock = Number(v); p.vivoEn = Date.now(); p.vivoHora = d.hora; alguno = true;
+      }
+    });
+    return alguno;
+  } catch (e) { return false; }
+}
+
+function fraseOrigen(p){
+  return esVivo(p) ? 'Dato en vivo de Ailoo.' : fraseFecha(p.fecha) + (VIVO_ACTIVO ? ' Ailoo no respondió.' : '');
+}
+
+async function responder(res, texto){
+  const id = ++consultaId;
   const { exactos, parecidos } = res;
   $('resultados').innerHTML = '';
   if (res.vacio) { const f = 'Dime el nombre del producto.'; setMsg(f); hablar(f); return; }
+
+  // Muestra de inmediato con el dato del inventario y consulta Ailoo mientras tanto
+  if (exactos.length && exactos.length <= MAX_LEER) {
+    pintar(exactos);
+    setMsg('Consultando Ailoo…');
+    await actualizarVivo(exactos);
+    if (id !== consultaId) return;              // llegó otra pregunta mientras esperaba
+    $('resultados').innerHTML = '';
+  }
 
   if (!exactos.length) {
     if (!parecidos.length) {
@@ -443,17 +482,18 @@ function responder(res, texto){
     return;
   }
 
-  const fecha = fraseFecha(exactos[0].fecha);
+  const origen = fraseOrigen(exactos[0]);
+  const alerta = !esVivo(exactos[0]) && diasDesde(exactos[0].fecha) > 1;
   if (exactos.length === 1) {
-    const f = fraseProducto(exactos[0]) + ' ' + fecha;
-    setMsg(f, diasDesde(exactos[0].fecha) > 1);
+    const f = fraseProducto(exactos[0]) + ' ' + origen;
+    setMsg(f, alerta);
     pintar(exactos);
     hablar(f);
     return;
   }
   if (exactos.length <= MAX_LEER) {
-    const f = 'Encontré ' + exactos.length + ' productos. ' + exactos.map(p => fraseProducto(p, true)).join(' ') + ' ' + fecha;
-    setMsg('Encontré ' + exactos.length + ' productos. ' + fecha, diasDesde(exactos[0].fecha) > 1);
+    const f = 'Encontré ' + exactos.length + ' productos. ' + exactos.map(p => fraseProducto(p, true)).join(' ') + ' ' + origen;
+    setMsg('Encontré ' + exactos.length + ' productos. ' + origen, alerta);
     pintar(exactos);
     hablar(f);
     return;
@@ -463,9 +503,13 @@ function responder(res, texto){
   setMsg('Encontré ' + exactos.length + ' productos.' + masTxt);
   pintar(mostrar);
   hablar('Encontré ' + exactos.length + ' productos.' + (exactos.length > MAX_MOSTRAR ? ' Di algo más específico, como la marca o el tamaño.' : ' Elige en pantalla.'));
+  // Actualiza en pantalla con el dato en vivo, sin volver a hablar
+  if (await actualizarVivo(mostrar) && id === consultaId) pintar(mostrar);
 }
 
+let ultimaLista = [];
 function pintar(lista){
+  ultimaLista = lista;
   const cont = $('resultados');
   cont.innerHTML = '';
   lista.forEach(p => {
@@ -475,7 +519,8 @@ function pintar(lista){
     div.innerHTML = '<div class="num"></div><div><div class="nom"></div><div class="det"></div></div>';
     div.querySelector('.num').textContent = p.stock == null ? '—' : numHablado(p.stock);
     div.querySelector('.nom').textContent = p.nombre;
-    div.querySelector('.det').textContent = 'Cód. ' + (p.codigo || '—') + (cj ? ' · Caja x' + cj : '') + ' · Inv. ' + fechaCorta(p.fecha);
+    div.querySelector('.det').textContent = 'Cód. ' + (p.codigo || '—') + (cj ? ' · Caja x' + cj : '') +
+      (esVivo(p) ? ' · En vivo ' + p.vivoHora : ' · Inv. ' + fechaCorta(p.fecha));
     if (p.transito) {
       const c = document.createElement('div');
       c.className = 'camino' + (p.transito.some(x => x.arribo && x.arribo < hoyISO()) ? ' atrasado' : '');
@@ -483,7 +528,13 @@ function pintar(lista){
       c.textContent = textoCamino(p);
       div.querySelector('.det').after(c);
     }
-    div.onclick = () => hablar(fraseProducto(p) + ' ' + fraseFecha(p.fecha));
+    div.onclick = async () => {
+      const id = ++consultaId;
+      if (!esVivo(p)) { div.querySelector('.det').textContent += ' · consultando Ailoo…'; await actualizarVivo([p]); }
+      if (id !== consultaId) return;
+      pintar(ultimaLista);
+      hablar(fraseProducto(p) + ' ' + fraseOrigen(p));
+    };
     cont.appendChild(div);
   });
 }
