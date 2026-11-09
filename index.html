@@ -40,7 +40,10 @@ input{flex:1;min-width:0;font-size:16px;padding:12px;border:1px solid #cfd6e3;bo
 kbd{font-family:inherit;font-size:12px;border:1px solid #b8c1d1;border-bottom-width:2px;border-radius:5px;padding:1px 6px;background:#fff;color:var(--texto)}
 #login{position:fixed;inset:0;background:var(--fondo);display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
 #login .caja{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:340px;box-shadow:0 4px 20px rgba(0,0,0,.1)}
-#login h2{margin:0 0 12px;font-size:18px;color:var(--azul)}
+#login h2{margin:0;font-size:30px;line-height:1.1;color:var(--azul);text-align:center}
+#login .logo{display:block;width:96px;height:96px;margin:0 auto 12px}
+#login .sub{margin:4px 0 18px;text-align:center;color:var(--gris);font-size:15px;font-weight:600}
+#login .by{margin:14px 0 0;text-align:center;color:var(--gris);font-size:13px}
 #login form{flex-direction:column}
 #loginErr{color:var(--rojo);font-size:13px;min-height:18px}
 </style>
@@ -70,12 +73,15 @@ kbd{font-family:inherit;font-size:12px;border:1px solid #b8c1d1;border-bottom-wi
 
 <div id="login">
   <div class="caja">
-    <h2>Stock D23 por voz</h2>
+    <img class="logo" src="icons/leon.svg" alt="">
+    <h2>León</h2>
+    <p class="sub">Consulta de stock por voz</p>
     <form id="formLogin">
       <input id="clave" type="password" placeholder="Clave" inputmode="numeric">
       <div id="loginErr"></div>
       <button class="btn" type="submit">Entrar</button>
     </form>
+    <p class="by">by D23</p>
   </div>
 </div>
 
