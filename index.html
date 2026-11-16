@@ -94,7 +94,7 @@ const MAX_MOSTRAR = 8;       // máximo de tarjetas en pantalla
 const TECLA_HABLAR = 'º';    // nombre que se muestra: tecla a la izquierda del 1 (código Backquote; en teclados latinos muestra | °)
 // También funciona Fn+F2, por compatibilidad con la versión anterior
 function esTeclaHablar(e){ return e.code === 'Backquote' || e.key === 'º' || e.key === 'F2'; }
-function escribiendo(e){ const t = e.target; return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && e.key !== 'F2'; }
+function escribiendo(e){ return false; } // la º activa la escucha incluso con el cursor en el buscador (no se escribe el símbolo)
 const MAX_ESCUCHA_SEG = 15;  // corta la escucha si la tecla queda pegada
 const VIVO_ACTIVO = true;     // consulta el stock en vivo en Ailoo antes de responder
 const VIVO_ESPERA_MS = 6000;  // si Ailoo no responde en este tiempo, usa el dato del inventario
